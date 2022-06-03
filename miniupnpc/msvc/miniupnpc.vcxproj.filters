@@ -83,9 +83,6 @@
     <ClInclude Include="..\include\miniupnpc.h">
       <Filter>Fichiers d%27en-tête</Filter>
     </ClInclude>
-    <ClInclude Include="..\include\miniupnpcstrings.h">
-      <Filter>Fichiers d%27en-tête</Filter>
-    </ClInclude>
     <ClInclude Include="..\include\miniupnpctypes.h">
       <Filter>Fichiers d%27en-tête</Filter>
     </ClInclude>
@@ -101,9 +98,6 @@
     <ClInclude Include="..\include\portlistingparse.h">
       <Filter>Fichiers d%27en-tête</Filter>
     </ClInclude>
-    <ClInclude Include="..\include\receivedata.h">
-      <Filter>Fichiers d%27en-tête</Filter>
-    </ClInclude>
     <ClInclude Include="..\include\upnpcommands.h">
       <Filter>Fichiers d%27en-tête</Filter>
     </ClInclude>
@@ -117,6 +111,15 @@
       <Filter>Fichiers d%27en-tête</Filter>
     </ClInclude>
     <ClInclude Include="..\src\win32_snprintf.h">
+      <Filter>Fichiers d%27en-tête</Filter>
+    </ClInclude>
+    <ClInclude Include="..\miniupnpcstrings.h">
+      <Filter>Fichiers d%27en-tête</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\miniwget_private.h">
+      <Filter>Fichiers d%27en-tête</Filter>
+    </ClInclude>
+    <ClInclude Include="..\src\receivedata.h">
       <Filter>Fichiers d%27en-tête</Filter>
     </ClInclude>
   </ItemGroup>
