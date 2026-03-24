@@ -29,7 +29,7 @@ typedef unsigned short uint16_t;
 #endif /* !defined(_MSC_VER) */
 #ifndef strncasecmp
 #if defined(_MSC_VER) && (_MSC_VER >= 1400)
-#define strncasecmp _memicmp
+#define strncasecmp _strnicmp  /* _memicmp deprecated; _strnicmp equivalent for HTTP header comparisons where n <= strlen */
 #else /* defined(_MSC_VER) && (_MSC_VER >= 1400) */
 #define strncasecmp memicmp
 #endif /* defined(_MSC_VER) && (_MSC_VER >= 1400) */
