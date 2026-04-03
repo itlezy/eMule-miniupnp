@@ -39,36 +39,35 @@ int
 main(int argc, char * * argv)
 {
 	char c;
-	
+
 	openlog("testipfrdrd", LOG_CONS|LOG_PERROR, LOG_USER);
 	if(init_redirect() < 0)
 	{
 		fprintf(stderr, "init_redirect() failed\n");
 		return 1;
 	}
-	
+
 	printf("List rdr ports :\n");
 	list_eports_tcp();
-	
+
 	printf("Add redirection !\n");
 	add_redirect_rule2("xennet0", "*", 12345, "192.168.1.100", 54321, IPPROTO_UDP,
 	                   "redirection description", 0);
 	add_redirect_rule2("xennet0", "8.8.8.8", 12345, "192.168.1.100", 54321, IPPROTO_TCP,
 	                   "redirection description", 0);
-	
+
 	printf("Check redirect rules with \"ipnat -l\" then press any key.\n");
 	c = getchar();
-	
+
 	printf("List rdr ports :\n");
 	list_eports_tcp();
-	
+
 	printf("Delete redirection !\n");
 	delete_redirect_rule("xennet0", 12345, IPPROTO_UDP);
 	delete_redirect_rule("xennet0", 12345, IPPROTO_TCP);
-	
+
 	printf("List rdr ports :\n");
 	list_eports_tcp();
-	
+
 	return 0;
 }
-

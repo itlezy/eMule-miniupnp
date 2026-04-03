@@ -687,4 +687,3 @@ void write_events_details(int s) {
 #endif
 
 #endif
-

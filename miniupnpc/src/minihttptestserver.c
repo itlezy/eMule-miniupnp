@@ -687,4 +687,3 @@ static int server(unsigned short port, const char * expected_file_name, int ipv6
 	}
 	return 0;
 }
-

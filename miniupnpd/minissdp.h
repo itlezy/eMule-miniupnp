@@ -55,4 +55,3 @@ int
 SubmitServicesToMiniSSDPD(const char * host, unsigned short port);
 
 #endif
-

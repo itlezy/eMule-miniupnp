@@ -339,7 +339,7 @@ VERSION 1.9 : released on 2014/10/27
 2014/06/xx:
   Various fixes :
     e->ipv6.flags |= IP6T_F_PROTO; (netfilter)
-    fix natpmp.c byte order conversion 
+    fix natpmp.c byte order conversion
     add small delay before SSDP response to prevent flooding
 
 2014/05/22:
@@ -1421,4 +1421,3 @@ VERSION 1.0 :
 2006/07/20:
   Command line arguments processing
   Added possibility to listen internally on several interfaces
-

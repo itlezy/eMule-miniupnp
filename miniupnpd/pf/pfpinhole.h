@@ -38,4 +38,3 @@ int clean_pinhole_list(unsigned int * next_timestamp);
 #endif /* ENABLE_UPNPPINHOLE */
 
 #endif
-

@@ -72,5 +72,3 @@ clear_nat_rules(void);
 #endif
 
 #endif
-
-

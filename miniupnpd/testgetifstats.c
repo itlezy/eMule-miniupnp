@@ -38,4 +38,3 @@ main(int argc, char **argv)
 	       data.opackets, data.obytes);
 	return 0;
 }
-

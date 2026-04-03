@@ -26,4 +26,3 @@ int ipfw_validate_protocol(int value);
 int ipfw_validate_ifname(const char * const value);
 
 #endif
-

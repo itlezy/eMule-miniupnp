@@ -17,7 +17,7 @@ extern const char * nft_forward_chain;
 
 #define NFT_DESCR_SIZE 1024
 
-enum rule_reg_type { 
+enum rule_reg_type {
 	RULE_REG_NONE,
 	RULE_REG_IIF,
 	RULE_REG_OIF,
@@ -128,11 +128,11 @@ rule_set_filter(uint8_t family, const char * ifname, uint8_t proto,
 struct nftnl_rule *
 rule_set_filter6(uint8_t family, const char * ifname, uint8_t proto,
 		struct in6_addr *rhost6, struct in6_addr *iaddr6,
-		unsigned short eport, unsigned short iport, 
+		unsigned short eport, unsigned short iport,
 		unsigned short rport, const char *descr, const char *handle);
 struct nftnl_rule *
 rule_set_filter_common(struct nftnl_rule *r, uint8_t family, const char * ifname,
-		uint8_t proto, unsigned short eport, unsigned short iport, 
+		uint8_t proto, unsigned short eport, unsigned short iport,
 		unsigned short rport, const char *descr, const char *handle);
 struct nftnl_rule *rule_del_handle(rule_t *r);
 int refresh_nft_cache_filter(void);

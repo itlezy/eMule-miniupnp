@@ -32,4 +32,3 @@ int
 checkforrunning(const char * fname);
 
 #endif
-

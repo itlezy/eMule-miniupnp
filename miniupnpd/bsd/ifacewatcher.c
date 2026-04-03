@@ -122,4 +122,3 @@ ProcessInterfaceWatchNotify(int s)
 		syslog(LOG_DEBUG, "unprocessed RTM message type=%d", rtm->rtm_type);
 	}
 }
-

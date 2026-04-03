@@ -91,4 +91,3 @@ int getifstats(const char * ifname, struct ifdata * data) {
 	free(buf);
 	return -1; /* not found or error */
 }
-

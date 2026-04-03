@@ -828,4 +828,3 @@ update_portmapping_desc_timestamp(const char * ifname,
 	add_redirect_desc(eport,proto, timestamp, desc);
 	return 0;
 }
-

@@ -129,4 +129,3 @@ int upnpc_get_status_info(upnpc_device_t * p);
 #endif
 
 #endif /* MINIUPNPC_LIBEVENT_H_INCLUDED */
-

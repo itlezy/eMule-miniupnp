@@ -305,10 +305,10 @@ ProcessInterfaceWatch(int s, int s_ssdp, int s_ssdp6)
 #if 0
 			syslog(LOG_DEBUG, " %d.%d.%d.%d %02x%02x%02x%02x",
 			       (uint8_t)p[0], (uint8_t)p[1], (uint8_t)p[2], (uint8_t)p[3],
-			       (uint8_t)p[0], (uint8_t)p[1], (uint8_t)p[2], (uint8_t)p[3]); 
+			       (uint8_t)p[0], (uint8_t)p[1], (uint8_t)p[2], (uint8_t)p[3]);
 			syslog(LOG_DEBUG, " %d.%d.%d.%d %02x%02x%02x%02x",
 			       (uint8_t)p[4], (uint8_t)p[5], (uint8_t)p[6], (uint8_t)p[7],
-			       (uint8_t)p[4], (uint8_t)p[5], (uint8_t)p[6], (uint8_t)p[7]); 
+			       (uint8_t)p[4], (uint8_t)p[5], (uint8_t)p[6], (uint8_t)p[7]);
 #endif
 			p += SA_RLEN(sa);
 			addr = addr << 1;
@@ -342,4 +342,3 @@ ProcessInterfaceWatch(int s, int s_ssdp, int s_ssdp6)
 #endif
 	return 0;
 }
-

@@ -150,4 +150,3 @@ MINIUPNP_LIBSPEC int UPNPIGD_IsConnected(struct UPNPUrls *, struct IGDdatas *);
 #endif
 
 #endif
-

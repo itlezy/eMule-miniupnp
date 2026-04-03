@@ -38,7 +38,7 @@ int main(int argc, char * * argv)
 	proto = (0==strcmp(argv[3], "tcp"))?IPPROTO_TCP:IPPROTO_UDP;
 	iaddr = argv[4];
 	iport = (unsigned)atoi(argv[5]);
-	
+
 	r = port_in_use(if_name, eport, proto, iaddr, iport);
 	printf("port_in_use(%s, %u, %d, %s, %u) returned %d\n",
 	       if_name, eport, proto, iaddr, iport, r);

@@ -842,7 +842,7 @@ expr_add_nat(struct nftnl_rule *r, uint32_t t, uint32_t family,
 		log_error("nftnl_expr_alloc(\"%s\") FAILED", "nat");
 		return;
 	}
-	
+
 	nftnl_expr_set_u32(e, NFTNL_EXPR_NAT_TYPE, t);
 	nftnl_expr_set_u32(e, NFTNL_EXPR_NAT_FAMILY, family);
 

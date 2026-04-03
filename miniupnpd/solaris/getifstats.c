@@ -94,4 +94,3 @@ getifstats(const char * ifname, struct ifdata * data)
 error:
 	return -1;	/* not found or error */
 }
-

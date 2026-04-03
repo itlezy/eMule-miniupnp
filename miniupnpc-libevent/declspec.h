@@ -12,4 +12,3 @@
 #endif
 
 #endif /* DECLSPEC_H_DEFINED */
-

@@ -1687,4 +1687,3 @@ quit:
 	closelog();
 	return ret;
 }
-

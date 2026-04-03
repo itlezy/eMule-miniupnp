@@ -115,4 +115,3 @@ int upnpc_process(upnpc_t * p);
 #endif
 
 #endif /* MINIUPNPC_ASYNC_H_INCLUDED */
-

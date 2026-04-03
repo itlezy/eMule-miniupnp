@@ -119,5 +119,3 @@ write_ruleset_details(int s);
 #endif
 
 #endif
-
-

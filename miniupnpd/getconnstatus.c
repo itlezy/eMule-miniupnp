@@ -71,4 +71,3 @@ get_wan_connection_status_str(const char * ifname)
 	}
 	return str;
 }
-

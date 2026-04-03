@@ -71,4 +71,3 @@ main(int argc, char ** argv)
 	delete_redirect_and_filter_rules(eport, IPPROTO_TCP);
 	return 0;
 }
-

@@ -22,4 +22,3 @@ int
 getifstats(const char * ifname, struct ifdata * data);
 
 #endif
-

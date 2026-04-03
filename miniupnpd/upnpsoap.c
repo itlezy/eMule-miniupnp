@@ -2397,4 +2397,3 @@ SoapError(struct upnphttp * h, int errCode, const char * errDesc)
 	BuildResp2_upnphttp(h, 500, "Internal Server Error", body, bodylen);
 	SendRespAndClose_upnphttp(h);
 }
-

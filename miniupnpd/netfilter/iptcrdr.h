@@ -66,4 +66,3 @@ int
 list_redirect_rule(const char * ifname);
 
 #endif
-

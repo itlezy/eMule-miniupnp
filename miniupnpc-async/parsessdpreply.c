@@ -77,4 +77,3 @@ parseMSEARCHReply(const char * reply, int size,
 		i++;
 	}
 }
-

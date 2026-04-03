@@ -71,4 +71,3 @@ static __inline size_t _sa_len(const struct sockaddr *addr)
 #endif
 
 #endif
-

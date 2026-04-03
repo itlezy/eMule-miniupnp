@@ -142,4 +142,3 @@ get_src_for_route_to(const struct sockaddr * dst,
 	}
 	return found ? 0 : -1;
 }
-

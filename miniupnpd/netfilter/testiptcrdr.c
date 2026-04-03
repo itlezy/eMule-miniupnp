@@ -88,4 +88,3 @@ main(int argc, char ** argv)
 	shutdown_redirect();
 	return 0;
 }
-

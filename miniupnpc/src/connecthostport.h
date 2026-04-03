@@ -17,4 +17,3 @@ SOCKET connecthostport(const char * host, unsigned short port,
                        unsigned int scope_id);
 
 #endif
-

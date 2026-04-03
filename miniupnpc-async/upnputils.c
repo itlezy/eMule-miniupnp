@@ -84,4 +84,3 @@ set_non_blocking(int fd)
 		return 0;
 	return 1;
 }
-

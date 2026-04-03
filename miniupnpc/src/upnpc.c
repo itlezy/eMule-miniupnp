@@ -873,4 +873,3 @@ int main(int argc, char ** argv)
 #endif /* _WIN32 */
 	return retcode;
 }
-

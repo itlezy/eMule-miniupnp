@@ -126,7 +126,7 @@ static int upnpc_send_ssdp_msearch(upnpc_t * p, const char * device, unsigned in
 	int n;
 	char bufr[1024];
 	struct sockaddr_in addr;
-	static const char MSearchMsgFmt[] = 
+	static const char MSearchMsgFmt[] =
 	"M-SEARCH * HTTP/1.1\r\n"
 	"HOST: " SSDP_MCAST_ADDR ":" XSTR(SSDP_PORT) "\r\n"
 	"ST: %s\r\n"
@@ -674,7 +674,7 @@ static int upnpc_build_soap_request(upnpc_device_t * p, const char * url,
                                     const struct upnp_args * args, int arg_count)
 {
 	char * body;
-	const char fmt_soap[] = 
+	const char fmt_soap[] =
 		"<?xml version=\"1.0\"?>\r\n"
 		"<" SOAPPREFIX ":Envelope "
 		"xmlns:" SOAPPREFIX "=\"http://schemas.xmlsoap.org/soap/envelope/\" "
@@ -1041,4 +1041,3 @@ TODO : translate comments to English
 	}
 	return UPNPC_OK;
 }
-

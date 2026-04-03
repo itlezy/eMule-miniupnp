@@ -55,4 +55,3 @@ ssdpDiscoverDevices(const char * const deviceTypes[],
 #endif
 
 #endif
-

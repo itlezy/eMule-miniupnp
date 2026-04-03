@@ -102,4 +102,3 @@ receivedata(SOCKET socket,
 #endif	/* MINIUPNPC_GET_SRC_ADDR */
 	return n;
 }
-

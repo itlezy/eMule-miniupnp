@@ -20,4 +20,3 @@ void
 SoapError(struct upnphttp * h, int errCode, const char * errDesc);
 
 #endif
-

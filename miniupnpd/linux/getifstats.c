@@ -177,4 +177,3 @@ getifstats(const char * ifname, struct ifdata * data)
 #endif /* ENABLE_GETIFSTATS_CACHING */
 	return r;
 }
-

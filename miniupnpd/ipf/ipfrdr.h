@@ -52,4 +52,3 @@ int
 clear_redirect_rules(void);
 
 #endif
-

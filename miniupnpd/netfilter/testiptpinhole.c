@@ -24,4 +24,3 @@ int main(int argc, char * * argv)
 	uid = add_pinhole("eth0", NULL, 0, "ff::123", 54321, IPPROTO_TCP);
 	return 0;
 }
-

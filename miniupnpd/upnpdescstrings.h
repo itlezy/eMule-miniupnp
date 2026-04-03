@@ -38,4 +38,3 @@
 /* UPC is 12 digit (barcode) */
 
 #endif
-

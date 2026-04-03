@@ -99,4 +99,3 @@ getVarsDP(int * len);
 #endif /* ENABLE_EVENTS */
 
 #endif
-

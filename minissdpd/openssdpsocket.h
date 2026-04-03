@@ -30,4 +30,3 @@ int
 AddDropMulticastMembership(int s, struct lan_addr_s * lan_addr, int ipv6, int drop);
 
 #endif
-

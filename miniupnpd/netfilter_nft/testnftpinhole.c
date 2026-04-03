@@ -30,4 +30,3 @@ int main(int argc, char * * argv)
 	syslog(LOG_INFO, "uid=%d", uid);
 	return 0;
 }
-

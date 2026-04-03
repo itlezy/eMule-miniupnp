@@ -86,5 +86,3 @@ void printresponse(const unsigned char * resp, int n)
 error:
 	printf("*** WARNING : TRUNCATED RESPONSE ***\n");
 }
-
-

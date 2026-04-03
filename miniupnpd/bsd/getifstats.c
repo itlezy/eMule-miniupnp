@@ -64,7 +64,7 @@ getifstats(const char *ifname, struct ifdata *data)
 			cache_timestamp = current_time;
 copy:
 #endif
-#define	IFA_STAT(s)	(((struct if_data *)ifa->ifa_data)->ifi_ ## s)   
+#define	IFA_STAT(s)	(((struct if_data *)ifa->ifa_data)->ifi_ ## s)
 			data->opackets = IFA_STAT(opackets);
 			data->ipackets = IFA_STAT(ipackets);
 			data->obytes = IFA_STAT(obytes);

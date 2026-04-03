@@ -1603,4 +1603,3 @@ SubmitServicesToMiniSSDPD(const char * host, unsigned short port) {
 	syslog(LOG_DEBUG, "%d service submitted to MiniSSDPd", i);
 	return 0;
 }
-

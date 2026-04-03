@@ -120,4 +120,3 @@ void printIGD(struct IGDdatas * d)
 	printf(" SCPDURL = '%s'\n", d->IPv6FC.scpdurl);
 }
 #endif /* DEBUG */
-

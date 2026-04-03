@@ -86,4 +86,3 @@ int main(int argc, char * * argv)
 	burptest(buffer, bufsize);
 	return 0;
 }
-

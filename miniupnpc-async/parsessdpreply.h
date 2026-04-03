@@ -29,4 +29,3 @@ parseMSEARCHReply(const char * reply, int size,
 			      const char * * st, int * stsize);
 
 #endif
-

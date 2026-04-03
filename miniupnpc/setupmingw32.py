@@ -32,4 +32,3 @@ setup(name="miniupnpc",
                    libraries=["ws2_32", "iphlpapi"] + compat_lib,
                    include_dirs=['include'], extra_objects=["miniupnpc.lib"])
       ])
-

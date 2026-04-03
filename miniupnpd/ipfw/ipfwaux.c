@@ -104,4 +104,3 @@ int ipfw_validate_ifname(const char * const value) {
 	}
 	return 0;
 }
-

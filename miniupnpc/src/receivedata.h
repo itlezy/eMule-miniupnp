@@ -18,4 +18,3 @@ int receivedata(SOCKET socket,
                 int timeout, unsigned int * scope_id);
 
 #endif
-

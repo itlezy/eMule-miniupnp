@@ -60,4 +60,3 @@ write_permlist(int fd, const struct upnpperm * permary,
 #endif
 
 #endif
-

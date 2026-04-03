@@ -32,4 +32,3 @@ setup(name="miniupnpc",
          Extension(name="miniupnpc", sources=["src/miniupnpcmodule.c"],
                    include_dirs=['include'], extra_objects=EXT)
       ])
-

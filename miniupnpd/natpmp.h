@@ -32,4 +32,3 @@ void ProcessIncomingNATPMPPacket(int s, unsigned char * msg_buff, int len,
 void SendNATPMPPublicAddressChangeNotification(int * sockets, int n_sockets);
 
 #endif
-

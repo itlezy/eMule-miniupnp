@@ -85,4 +85,3 @@ try:
   print u.getportmappingnumberofentries()
 except Exception, e:
   print 'GetPortMappingNumberOfEntries() is not supported :', e
-
