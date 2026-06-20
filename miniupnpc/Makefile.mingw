@@ -1,11 +1,13 @@
-# $Id: Makefile.mingw,v 1.21 2015/09/18 12:45:16 nanard Exp $
+# $Id: Makefile.mingw,v 1.36 2024/01/04 01:29:56 nanard Exp $
 # Miniupnp project.
 # http://miniupnp.free.fr/ or https://miniupnp.tuxfamily.org/
-# (c) 2005-2020 Thomas Bernard
+# (c) 2005-2026 Thomas Bernard
 # This Makefile is made for MinGW
 #
 # To cross compile on a *nix machine :
 # make -f Makefile.mingw DLLWRAP=mingw32-dllwrap CC=mingw32-gcc AR=mingw32-ar WINDRES=mingw32-windres
+#
+# set USE_DLLWRAP=1 to use dllwrap instead of gcc -shared
 #
 SRCDIR = src
 INCDIR = include
@@ -21,15 +23,18 @@ RM = del
 else
 RM = rm -f
 endif
-#CFLAGS = -Wall -g
-#CPPFLAGS = -DDEBUG -D_WIN32_WINNT=0X501
-CFLAGS = -Wall -W -Wstrict-prototypes -Os
-CPPFLAGS = -DNDEBUG -D_WIN32_WINNT=0X501
+
+CFLAGS ?= -Os
+CFLAGS += -Wall
+CFLAGS += -W -Wstrict-prototypes
+
+CPPFLAGS += -DNDEBUG -D_WIN32_WINNT=0x501
 CPPFLAGS += -Iinclude
 CPPFLAGS += -I.
-LDLIBS = -lws2_32 -liphlpapi
-# -lwsock32
+
 # -liphlpapi is needed for GetBestRoute() and GetIpAddrTable()
+LDLIBS = -lws2_32 -liphlpapi
+
 PYTHON=\utils\python25\python
 OBJS=miniwget.o minixml.o igd_desc_parse.o minisoap.o \
      minissdpc.o \
@@ -38,7 +43,7 @@ OBJS=miniwget.o minixml.o igd_desc_parse.o minisoap.o \
      upnpdev.o addr_is_reserved.o
 OBJSDLL=$(addprefix dll-, $(OBJS)) winres.o
 BINARIES=upnpc-static.exe upnpc-shared.exe \
-         listdevices-static.exe listdevices-shared.exe \
+         upnp-listdevices-static.exe upnp-listdevices-shared.exe \
          miniupnpc.dll libminiupnpc.a \
          testminixml.exe
 ifneq ($(GITHUB_SHA),)
@@ -72,6 +77,7 @@ clean:
 	$(RM) *.exe
 	$(RM) miniupnpc.dll miniupnpc.lib miniupnpc.dll.def
 	$(RM) libminiupnpc.a
+	$(RM) $(DISTFILE)
 
 $(DISTFILE):	$(BINARIES)
 	$(ZIP) $@ *.exe *.dll *.lib *.def *.a LICENSE README Changelog.txt
@@ -82,14 +88,22 @@ libminiupnpc.a:	$(OBJS)
 pythonmodule:	libminiupnpc.a
 	$(PYTHON) setupmingw32.py build $(SETUP_COMPILER_FLAG)
 	$(PYTHON) setupmingw32.py install --skip-build
+	$(PYTHON) setupmingw32.py sdist
 	$(PYTHON) setupmingw32.py bdist_wheel --skip-build
 
 miniupnpc.dll:	miniupnpc.def $(OBJSDLL)
+ifeq ($(USE_DLLWRAP),1)
 	$(DLLWRAP) -k --driver-name $(CC) \
 	--def miniupnpc.def \
 	--output-def miniupnpc.dll.def \
 	--implib miniupnpc.lib -o $@ \
 	$(OBJSDLL) $(LDLIBS)
+else
+	$(CC) -shared -o $@ $(OBJSDLL) $(LDLIBS) \
+	-Wl,--output-def,miniupnpc.dll.def \
+	-Wl,--out-implib,miniupnpc.lib \
+	miniupnpc.def
+endif
 
 miniupnpc.lib:	miniupnpc.dll
 
@@ -107,6 +121,12 @@ dll-%.o:	$(SRCDIR)/%.c
 	$(CC) -static -o $@ $^ $(LDLIBS)
 
 %-shared.exe:	%-shared.o miniupnpc.lib
+	$(CC) -o $@ $^ $(LDLIBS)
+
+upnp-listdevices-static.exe:	listdevices.o libminiupnpc.a
+	$(CC) -static -o $@ $^ $(LDLIBS)
+
+upnp-listdevices-shared.exe:	listdevices-shared.o miniupnpc.lib
 	$(CC) -o $@ $^ $(LDLIBS)
 
 # To make miniupnpcstrings.h from miniupnpcstrings.h.in we either

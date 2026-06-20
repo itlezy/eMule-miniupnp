@@ -4,10 +4,10 @@
 
 | Package | Version | Supported          |
 | ------- | ------- | ------------------ |
-| miniupnpd | 2.2.x | :white_check_mark: |
-| miniupnpd | < 2.2 | :x:                |
-| miniupnpc | 2.2.x | :white_check_mark: |
-| miniupnpc | < 2.2 | :x:                |
+| miniupnpd | 2.3.x | :white_check_mark: |
+| miniupnpd | < 2.3 | :x:                |
+| miniupnpc | 2.3.x | :white_check_mark: |
+| miniupnpc | < 2.3 | :x:                |
 
 ## Reporting a Vulnerability
 

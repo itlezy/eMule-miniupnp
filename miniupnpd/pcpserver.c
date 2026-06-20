@@ -1,4 +1,4 @@
-/* $Id: pcpserver.c,v 1.51 2019/05/21 08:39:44 nanard Exp $ */
+/* $Id: pcpserver.c,v 1.56 2022/10/16 06:03:56 nanard Exp $ */
 /* vim: tabstop=4 shiftwidth=4 noexpandtab
  * MiniUPnP project
  * Website : http://miniupnp.free.fr/ or https://miniupnp.tuxfamily.org/
@@ -73,6 +73,7 @@ POSSIBILITY OF SUCH DAMAGE.
 #include "pcpserver.h"
 #include "natpmp.h"
 #include "macros.h"
+#include "rw_unaligned.h"
 #include "upnpglobalvars.h"
 #include "pcplearndscp.h"
 #include "upnpredirect.h"
@@ -433,10 +434,17 @@ static int parsePCPOption(uint8_t* pcp_buf, int remain, pcp_info_t *pcp_msg_info
 		pcp_msg_info->result_code = PCP_ERR_MALFORMED_OPTION;
 		return 0;
 	}
+	remain -= PCP_OPTION_HDR_SIZE;
 
-	option_length = READNU16(pcp_buf + 2) + 4;	/* len */
+	/* Option Length:  16 bits.  Indicates the length of the enclosed data,
+     * in octets.  Options with length of 0 are allowed.  Options that
+     * are not a multiple of 4 octets long are followed by one, two, or
+     * three 0 octets to pad their effective length in the packet to be a
+     * multiple of 4 octets.  The Option Length reflects the semantic
+     * length of the option, not including any padding octets. */
+	option_length = READNU16(pcp_buf + 2);
 
-	if (remain < option_length) {
+	if (remain < (int)option_length) {
 		pcp_msg_info->result_code = PCP_ERR_MALFORMED_OPTION;
 		return 0;
 	}
@@ -526,16 +534,16 @@ static int parsePCPOption(uint8_t* pcp_buf, int remain, pcp_info_t *pcp_msg_info
 #endif
 	default:
 		if (pcp_buf[0] < 128) {
-			syslog(LOG_ERR, "PCP: Unrecognized mandatory PCP OPTION: %d \n", (int)pcp_buf[0]);
+			syslog(LOG_ERR, "PCP: Unrecognized mandatory PCP OPTION: %d\n", (int)pcp_buf[0]);
 			/* Mandatory to understand */
 			pcp_msg_info->result_code = PCP_ERR_UNSUPP_OPTION;
-			remain = 0;
-			break;
+		} else {
+			syslog(LOG_INFO, "PCP: Unrecognized optional PCP OPTION: %d\n", (int)pcp_buf[0]);
 		}
-		/* TODO - log optional not understood options? */
 		break;
 	}
-	return option_length;
+	/* add header and pad to the next multiple of 4 octets */
+	return 4 + (((int)option_length + 3) & ~3);
 }
 
 
@@ -592,7 +600,7 @@ static int CheckExternalAddress(pcp_info_t* pcp_msg_info)
 				return -1;
 			}
 #ifdef ENABLE_IPV6
-		} else if ((af == AF_INET6) && (ext_if_name6 != ext_if_name)) {
+		} else if ((af == AF_INET6) && (strcmp(ext_if_name6, ext_if_name) != 0)) {
 			if(!ext_if_name6 || ext_if_name6[0]=='\0') {
 				pcp_msg_info->result_code = PCP_ERR_NETWORK_FAILURE;
 				return -1;
@@ -819,7 +827,7 @@ static void CreatePCPPeer(pcp_info_t *pcp_msg_info)
 	syslog(r == PCP_SUCCESS ? LOG_INFO : LOG_ERR,
 	       "PCP PEER: %s peer mapping %s %s:%hu(%hu)->%s:%hu '%s'",
 	       r == PCP_SUCCESS ? "added" : "failed to add",
-	       (pcp_msg_info->protocol==IPPROTO_TCP)?"TCP":"UDP",
+	       proto_itoa(pcp_msg_info->protocol),
 	       pcp_msg_info->mapped_str,
 	       pcp_msg_info->int_port,
 	       pcp_msg_info->ext_port,
@@ -890,13 +898,13 @@ static void DeletePCPPeer(pcp_info_t *pcp_msg_info)
 				syslog(LOG_ERR, "PCP PEER: failed to remove peer mapping");
 			} else {
 				syslog(LOG_INFO, "PCP PEER: %s port %hu peer mapping removed",
-				       proto2==IPPROTO_TCP?"TCP":"UDP", eport2);
+				       proto_itoa(proto2), eport2);
 			}
 			return;
 		}
 	if (r==-1) {
 		syslog(LOG_ERR, "PCP PEER: Failed to find PCP mapping internal port %hu, protocol %s",
-		       iport, (pcp_msg_info->protocol == IPPROTO_TCP)?"TCP":"UDP");
+		       iport, proto_itoa(pcp_msg_info->protocol));
 		pcp_msg_info->result_code = PCP_ERR_NO_RESOURCES;
 	}
 }
@@ -933,7 +941,7 @@ static int CreatePCPMap_NAT(pcp_info_t *pcp_msg_info)
 		     (!check_upnp_rule_against_permissions(upnppermlist,
 							   num_upnpperm, pcp_msg_info->ext_port,
 							   ((struct in_addr*)pcp_msg_info->mapped_ip->s6_addr)[3],
-							   pcp_msg_info->int_port)))) {
+							   pcp_msg_info->int_port, pcp_msg_info->desc)))) {
 			if (pcp_msg_info->pfailure_present) {
 				return PCP_ERR_CANNOT_PROVIDE_EXTERNAL;
 			}
@@ -949,7 +957,7 @@ static int CreatePCPMap_NAT(pcp_info_t *pcp_msg_info)
 				pcp_msg_info->mapped_str, pcp_msg_info->int_port) > 0) {
 			syslog(LOG_INFO, "port %hu protocol %s already in use",
 			       pcp_msg_info->ext_port,
-			       (pcp_msg_info->protocol==IPPROTO_TCP)?"tcp":"udp");
+			       proto_itoa(pcp_msg_info->protocol));
 			pcp_msg_info->ext_port++;
 			if (pcp_msg_info->ext_port == 0) { /* skip port zero */
 				pcp_msg_info->ext_port++;
@@ -973,7 +981,7 @@ static int CreatePCPMap_NAT(pcp_info_t *pcp_msg_info)
 				}
 			} else {
 				syslog(LOG_INFO, "port %hu %s already redirected to %s:%hu, replacing",
-				       pcp_msg_info->ext_port, (pcp_msg_info->protocol==IPPROTO_TCP)?"tcp":"udp",
+				       pcp_msg_info->ext_port, proto_itoa(pcp_msg_info->protocol),
 				       iaddr_old, iport_old);
 				/* remove and then add again */
 				if (_upnp_delete_redir(pcp_msg_info->ext_port,
@@ -1007,21 +1015,29 @@ static int CreatePCPMap_FW(pcp_info_t *pcp_msg_info)
 #ifdef ENABLE_UPNPPINHOLE
 	int uid;
 	int r;
+	char desc[64];
 	/* first check if pinhole already exists */
 	uid = upnp_find_inboundpinhole(NULL, 0,
 					pcp_msg_info->mapped_str,
 					pcp_msg_info->int_port,
 					pcp_msg_info->protocol,
-					NULL, 0, /* desc */
+					desc, sizeof(desc),
 					NULL /* lifetime */);
 	if(uid >= 0) {
 		/* pinhole already exists, updating */
-		syslog(LOG_INFO, "updating pinhole to %s:%hu %s",
-		       pcp_msg_info->mapped_str, pcp_msg_info->int_port,
-		       (pcp_msg_info->protocol == IPPROTO_TCP)?"TCP":"UDP");
+		if (0 != strcmp(desc, pcp_msg_info->desc)) {
+			/* nonce does not match */
+			syslog(LOG_ERR, "Unauthorized to update pinhole : \"%s\" != \"%s\"",
+			       desc, pcp_msg_info->desc);
+			return PCP_ERR_NOT_AUTHORIZED;
+		}
+		syslog(LOG_INFO, "updating pinhole %d to %s:%hu %s",
+		       uid, pcp_msg_info->mapped_str, pcp_msg_info->int_port,
+		       proto_itoa(pcp_msg_info->protocol));
 		r = upnp_update_inboundpinhole((unsigned short)uid, pcp_msg_info->lifetime);
 		return r >= 0 ? PCP_SUCCESS : PCP_ERR_NO_RESOURCES;
 	} else {
+		/* create new */
 		r = upnp_add_inboundpinhole(NULL, 0,
 						pcp_msg_info->mapped_str,
 						pcp_msg_info->int_port,
@@ -1081,7 +1097,7 @@ static void CreatePCPMap(pcp_info_t *pcp_msg_info)
 	syslog(r == PCP_SUCCESS ? LOG_INFO : LOG_ERR,
 	      "PCP MAP: %s mapping %s %hu->%s:%hu '%s'",
 	       r == PCP_SUCCESS ? "added" : "failed to add",
-	       (pcp_msg_info->protocol==IPPROTO_TCP)?"TCP":"UDP",
+	       proto_itoa(pcp_msg_info->protocol),
 	       pcp_msg_info->ext_port,
 	       pcp_msg_info->mapped_str,
 	       pcp_msg_info->int_port,
@@ -1095,60 +1111,73 @@ static void DeletePCPMap(pcp_info_t *pcp_msg_info)
 	int r=-1;
 	/* remove the mapping */
 	/* remove all the mappings for this client */
-	int index;
 	unsigned short eport2, iport2;
 	char iaddr2[INET6_ADDRSTRLEN];
 	int proto2;
 	char desc[64];
 	unsigned int timestamp;
-#ifdef ENABLE_UPNPPINHOLE
-	int uid = -1;
-#endif /* ENABLE_UPNPPINHOLE */
 
-	/* iterate through all rules and delete the requested ones */
-	for (index = 0 ;
-	     (!pcp_msg_info->is_fw &&
-	      get_redirect_rule_by_index(index, 0,
+	syslog(LOG_DEBUG, "is_fw=%d addr=%s iport=%hu proto=%d",
+	       pcp_msg_info->is_fw,  pcp_msg_info->mapped_str, iport, (int)proto);
+	if (!pcp_msg_info->is_fw) {
+		int index;
+		/* iterate through all rules and delete the requested ones */
+		for (index = 0;
+		     get_redirect_rule_by_index(index, 0,
 					 &eport2, iaddr2, sizeof(iaddr2),
 					 &iport2, &proto2,
 					 desc, sizeof(desc),
-					 0, 0, &timestamp, 0, 0) >= 0)
+					 0, 0, &timestamp, 0, 0) >= 0;
+		     index++) {
+			syslog(LOG_DEBUG, "%d: %s %hu %d", index, iaddr2, iport2, proto2);
+			if(0 == strcmp(iaddr2, pcp_msg_info->mapped_str)
+			   && (proto2==proto)
+			   && ((iport2==iport) || (iport==0))) {
+				if(0 != strcmp(desc, pcp_msg_info->desc)) {
+					/* nonce does not match */
+					pcp_msg_info->result_code = PCP_ERR_NOT_AUTHORIZED;
+					syslog(LOG_ERR, "Unauthorized to remove PCP mapping internal port %hu, protocol %s",
+					       iport, proto_itoa(pcp_msg_info->protocol));
+					return;
+				} else {
+					r = _upnp_delete_redir(eport2, proto2);
+				}
+				break;
+			}
+		}
+	} else {
 #ifdef ENABLE_UPNPPINHOLE
-	       ||
-	     (pcp_msg_info->is_fw &&
-	      (uid=upnp_get_pinhole_uid_by_index(index))>=0 &&
-	      upnp_get_pinhole_info((unsigned short)uid,
-				    NULL, 0, NULL,
-				    iaddr2, sizeof(iaddr2), &iport2,
-				    &proto2, desc, sizeof(desc),
-				    &timestamp, NULL) >= 0)
-#endif /* ENABLE_UPNPPINHOLE */
-		     ;
-	     index++)
-		if(0 == strcmp(iaddr2, pcp_msg_info->mapped_str)
-		   && (proto2==proto)
-		   && ((iport2==iport) || (iport==0))) {
+		int uid;
+		uid = upnp_find_inboundpinhole(NULL, 0,
+						pcp_msg_info->mapped_str, iport,
+						pcp_msg_info->protocol,
+						desc, sizeof(desc),
+						NULL /* lifetime */);
+		if (uid < 0) {
+			syslog(LOG_ERR, "Failed to find mapping to %s:%hu, protocol %s",
+			       pcp_msg_info->mapped_str, iport, proto_itoa(pcp_msg_info->protocol));
+			return;
+		} else {
 			if(0 != strcmp(desc, pcp_msg_info->desc)) {
 				/* nonce does not match */
 				pcp_msg_info->result_code = PCP_ERR_NOT_AUTHORIZED;
 				syslog(LOG_ERR, "Unauthorized to remove PCP mapping internal port %hu, protocol %s",
-				       iport, (pcp_msg_info->protocol == IPPROTO_TCP)?"TCP":"UDP");
+				       iport, proto_itoa(pcp_msg_info->protocol));
 				return;
-			} else if (!pcp_msg_info->is_fw) {
-				r = _upnp_delete_redir(eport2, proto2);
 			} else {
-#ifdef ENABLE_UPNPPINHOLE
 				r = upnp_delete_inboundpinhole(uid);
-#endif /* ENABLE_UPNPPINHOLE */
 			}
-			break;
 		}
+#else
+		syslog(LOG_WARNING, "ENABLE_UPNPPINHOLE was not enabled at compile time");
+#endif /* ENABLE_UPNPPINHOLE */
+	}
 	if (r >= 0) {
 		syslog(LOG_INFO, "PCP: %s port %hu mapping removed",
-		       proto2==IPPROTO_TCP?"TCP":"UDP", eport2);
+		       proto==IPPROTO_TCP?"TCP":"UDP", (pcp_msg_info->is_fw ? iport : eport2));
 	} else {
 		syslog(LOG_ERR, "Failed to remove PCP mapping to %s:%hu %s",
-		       pcp_msg_info->mapped_str, iport, (pcp_msg_info->protocol == IPPROTO_TCP)?"TCP":"UDP");
+		       pcp_msg_info->mapped_str, iport, proto_itoa(proto));
 		pcp_msg_info->result_code = PCP_ERR_NO_RESOURCES;
 	}
 }
@@ -1630,6 +1659,20 @@ int OpenAndConfPCPv6Socket(void)
 		       "OpenAndConfPCPv6Socket");
 	}
 #endif
+#if defined(SO_BINDTODEVICE) && !defined(MULTIPLE_EXTERNAL_IP)
+	/* One and only one LAN interface and no bind any ipv6 addr */
+	if(lan_addrs.lh_first != NULL && lan_addrs.lh_first->list.le_next == NULL
+	   && lan_addrs.lh_first->ifname[0] != '\0' &&
+	   memcmp(&ipv6_bind_addr, &in6addr_any, sizeof(in6addr_any)) == 0 )
+	{
+		if(setsockopt(s, SOL_SOCKET, SO_BINDTODEVICE,
+		              lan_addrs.lh_first->ifname,
+		              strlen(lan_addrs.lh_first->ifname) + 1) < 0)
+			syslog(LOG_WARNING, "%s: setsockopt(udp6, SO_BINDTODEVICE, %s): %m",
+			       "OpenAndConfPCPv6Socket",
+			       lan_addrs.lh_first->ifname);
+	}
+#endif /* defined(SO_BINDTODEVICE) && !defined(MULTIPLE_EXTERNAL_IP) */
 #ifdef IPV6_RECVPKTINFO
 	/* see RFC3542 */
 	if(setsockopt(s, IPPROTO_IPV6, IPV6_RECVPKTINFO, &i, sizeof(i)) < 0) {

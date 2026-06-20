@@ -1,9 +1,9 @@
-# $Id: Makefile,v 1.145 2021/09/28 20:42:25 nanard Exp $
+# $Id: Makefile,v 1.156 2025/03/18 23:40:14 nanard Exp $
 # MiniUPnP Project
 # http://miniupnp.free.fr/
 # https://miniupnp.tuxfamily.org/
 # https://github.com/miniupnp/miniupnp
-# (c) 2005-2021 Thomas Bernard
+# (c) 2005-2025 Thomas Bernard
 # to install use :
 # $ make DESTDIR=/tmp/dummylocation install
 # or
@@ -84,9 +84,10 @@ ifneq (, $(findstring sun, $(OS))$(findstring solaris, $(OS)))
 endif
 
 # APIVERSION is used to build SONAME
-APIVERSION = 17
+APIVERSION = 21
 
 SRCS = $(wildcard $(SRCDIR)/*.c)
+PRIVATE_HEADERS = $(wildcard $(SRCDIR)/*.h)
 
 LIBOBJS = $(addprefix $(BUILD)/,miniwget.o minixml.o igd_desc_parse.o minisoap.o \
           miniupnpc.o upnpreplyparse.o upnpcommands.o upnperrors.o \
@@ -118,7 +119,7 @@ else
 endif
 endif
 
-EXECUTABLES = $(addprefix $(BUILD)/, upnpc-static listdevices)
+EXECUTABLES = $(addprefix $(BUILD)/, upnpc-static upnp-listdevices-static)
 EXECUTABLES_ADDTESTS = $(addprefix $(BUILD)/, testminixml minixmlvalid \
     testupnpreplyparse testigddescparse testminiwget testportlistingparse)
 
@@ -141,7 +142,7 @@ ifeq (, $(findstring amiga, $(OS)))
 ifeq (, $(findstring mingw, $(OS))$(findstring cygwin, $(OS))$(findstring msys, $(OS)))
 CFLAGS += -fPIC
 endif
-EXECUTABLES += $(BUILD)/upnpc-shared
+EXECUTABLES += $(BUILD)/upnpc-shared $(BUILD)/upnp-listdevices-shared
 TESTMINIWGETOBJS += $(BUILD)/minissdpc.o
 TESTIGDDESCPARSE += $(BUILD)/minissdpc.o
 LIBOBJS += $(BUILD)/minissdpc.o
@@ -167,7 +168,7 @@ endif
 
 
 .PHONY:	install clean depend all check test everything \
-	installpythonmodule updateversion
+	installpythonmodule updateversion doc
 
 all:	$(LIBRARY) $(EXECUTABLES)
 
@@ -178,8 +179,13 @@ check:	validateminixml validateminiwget validateupnpreplyparse \
 
 everything:	all $(EXECUTABLES_ADDTESTS)
 
+doc:	doxygen/html/index.html
+
+# note : the python module "wheel" is required for bdist_wheel
 pythonmodule:	$(LIBRARY) $(SRCDIR)/miniupnpcmodule.c setup.py
 	MAKE=$(MAKE) python setup.py build
+	MAKE=$(MAKE) python setup.py sdist
+	MAKE=$(MAKE) python setup.py bdist_wheel --skip-build
 	touch $@
 
 installpythonmodule:	pythonmodule
@@ -258,8 +264,10 @@ endif
 	$(INSTALL) -d $(DESTDIR)$(INSTALLDIRBIN)
 ifneq (, $(findstring amiga, $(OS)))
 	$(INSTALL) -m 755 $(BUILD)/upnpc-static $(DESTDIR)$(INSTALLDIRBIN)/upnpc
+	$(INSTALL) -m 755 $(BUILD)/upnp-listdevices-static $(DESTDIR)$(INSTALLDIRBIN)/upnp-listdevices
 else
 	$(INSTALL) -m 755 $(BUILD)/upnpc-shared $(DESTDIR)$(INSTALLDIRBIN)/upnpc
+	$(INSTALL) -m 755 $(BUILD)/upnp-listdevices-shared $(DESTDIR)$(INSTALLDIRBIN)/upnp-listdevices
 endif
 	$(INSTALL) -m 755 external-ip.sh $(DESTDIR)$(INSTALLDIRBIN)/external-ip
 ifeq (, $(findstring amiga, $(OS)))
@@ -293,6 +301,7 @@ $(BUILD)/miniupnpc.pc:	VERSION
 	echo "" >> $@
 	echo "Name: miniUPnPc" >> $@
 	echo "Description: UPnP IGD client lightweight library" >> $@
+	echo "URL: https://miniupnp.tuxfamily.org/" >> $@
 	echo "Version: $(VERSION)" >> $@
 	echo "Libs: -L\$${libdir} -lminiupnpc" >> $@
 	echo "Cflags: -I\$${includedir}" >> $@
@@ -329,7 +338,11 @@ $(BUILD)/upnpc-static:	$(BUILD)/upnpc.o $(LIBRARY)
 $(BUILD)/upnpc-shared:	$(BUILD)/upnpc.o $(SHAREDLIBRARY)
 	$(CC) $(LDFLAGS) -o $@ $^ $(LOADLIBES) $(LDLIBS)
 
-$(BUILD)/listdevices:	$(BUILD)/listdevices.o $(LIBRARY)
+$(BUILD)/upnp-listdevices-static:	$(BUILD)/listdevices.o $(LIBRARY)
+	$(CC) $(LDFLAGS) -o $@ $^ $(LOADLIBES) $(LDLIBS)
+
+$(BUILD)/upnp-listdevices-shared:	$(BUILD)/listdevices.o $(SHAREDLIBRARY)
+	$(CC) $(LDFLAGS) -o $@ $^ $(LOADLIBES) $(LDLIBS)
 
 $(BUILD)/testminixml:	$(TESTMINIXMLOBJS)
 
@@ -386,6 +399,9 @@ ideb:
 	(sudo apt-get install python-all-dev)
 
 minihttptestserver:	minihttptestserver.o
+
+doxygen/html/index.html: Doxyfile $(SRCS) $(HEADERS) $(PRIVATE_HEADERS)
+	doxygen
 
 print-%:
 	@echo "$* = $($*)"

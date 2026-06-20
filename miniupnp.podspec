@@ -1,13 +1,13 @@
 Pod::Spec.new do |spec|
   spec.name = "miniupnp"
-  spec.summary = "Mini UPnP client"
-  spec.homepage = 'http://miniupnp.free.fr/'
+  spec.summary = "MiniUPnP IGD client"
+  spec.homepage = 'https://miniupnp.tuxfamily.org/'
   spec.authors = "The MiniUPnP Authors"
   spec.license = { type: "BSD", file: "miniupnpc/LICENSE" }
 
   spec.version = "2.0.0.2"
   spec.source = {
-      git: 'https://github.com/cpp-ethereum-ios/miniupnp.git',
+      git: 'https://github.com/miniupnp/miniupnp.git',
       tag: "v#{spec.version}"
   }
 

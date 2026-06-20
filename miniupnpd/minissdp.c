@@ -1,8 +1,8 @@
-/* $Id: minissdp.c,v 1.103 2021/05/21 22:05:17 nanard Exp $ */
+/* $Id: minissdp.c,v 1.107 2024/01/15 00:20:21 nanard Exp $ */
 /* vim: tabstop=4 shiftwidth=4 noexpandtab
  * MiniUPnP project
  * http://miniupnp.free.fr/ or https://miniupnp.tuxfamily.org/
- * (c) 2006-2021 Thomas Bernard
+ * (c) 2006-2025 Thomas Bernard
  * This software is subject to the conditions detailed
  * in the LICENCE file provided within the distribution */
 
@@ -47,9 +47,23 @@
 /* SSDP ip/port */
 #define SSDP_PORT (1900)
 #define SSDP_MCAST_ADDR ("239.255.255.250")
+
+#ifdef ENABLE_IPV6
 #define LL_SSDP_MCAST_ADDR "FF02::C"
 #define SL_SSDP_MCAST_ADDR "FF05::C"
 #define GL_SSDP_MCAST_ADDR "FF0E::C"
+
+/* UDA 1.1 AnnexA and UDA 2.0 only allow/define the use of
+ * Link-Local and Site-Local multicast scopes */
+static struct { const char * p1, * p2; } const mcast_addrs[] = {
+	{ LL_SSDP_MCAST_ADDR, "[" LL_SSDP_MCAST_ADDR "]" },	/* Link Local */
+	{ SL_SSDP_MCAST_ADDR, "[" SL_SSDP_MCAST_ADDR "]" },	/* Site Local */
+#ifndef UPNP_STRICT
+	{ GL_SSDP_MCAST_ADDR, "[" GL_SSDP_MCAST_ADDR "]" },	/* Global */
+#endif /* ! UPNP_STRICT */
+	{ NULL, NULL }
+};
+#endif /* ENABLE_IPV6 */
 
 /* AddMulticastMembership()
  * param s			socket
@@ -197,10 +211,12 @@ OpenAndConfSSDPReceiveSocket(int ipv6)
 	{
 		syslog(LOG_WARNING, "setsockopt(udp, SO_REUSEADDR): %m");
 	}
+#ifdef SO_REUSEPORT
 	if (setsockopt(s, SOL_SOCKET, SO_REUSEPORT, &on, sizeof(on)) < 0)
 	{
 		syslog(LOG_WARNING, "setsockopt(udp, SO_REUSEPORT): %m");
 	}
+#endif /* SO_REUSEPORT */
 #ifdef IP_RECVIF
 	/* BSD */
 	if(!ipv6) {
@@ -220,7 +236,11 @@ OpenAndConfSSDPReceiveSocket(int ipv6)
 #endif /* IP_PKTINFO */
 #if defined(ENABLE_IPV6) && defined(IPV6_RECVPKTINFO)
 	if(ipv6) {
+#ifdef IPPROTO_IPV6
+		if(setsockopt(s, IPPROTO_IPV6, IPV6_RECVPKTINFO, &on, sizeof(on)) < 0)
+#else
 		if(setsockopt(s, IPPROTO_IP, IPV6_RECVPKTINFO, &on, sizeof(on)) < 0)
+#endif
 		{
 			syslog(LOG_WARNING, "setsockopt(udp, IPV6_RECVPKTINFO): %m");
 		}
@@ -402,7 +422,19 @@ OpenAndConfSSDPNotifySocketIPv6(struct lan_addr_s * lan_addr)
 		close(s);
 		return -1;
 	}
-
+#if defined(SO_BINDTODEVICE) && !defined(MULTIPLE_EXTERNAL_IP)
+	/* One and only one LAN interface */
+	if(lan_addrs.lh_first != NULL && lan_addrs.lh_first->list.le_next == NULL
+	   && lan_addrs.lh_first->ifname[0] != '\0')
+	{
+		if(setsockopt(s, SOL_SOCKET, SO_BINDTODEVICE,
+		              lan_addrs.lh_first->ifname,
+		              strlen(lan_addrs.lh_first->ifname) + 1) < 0)
+			syslog(LOG_WARNING, "%s: setsockopt(udp6, SO_BINDTODEVICE, %s): %m",
+			       "OpenAndConfSSDPNotifySocketIPv6",
+			       lan_addrs.lh_first->ifname);
+	}
+#endif /* defined(SO_BINDTODEVICE) && !defined(MULTIPLE_EXTERNAL_IP) */
 	/* bind() socket before using sendto() is not mandatory
 	 * (sendto() will implicitly bind the socket when called on
 	 * an unbound socket)
@@ -524,11 +556,10 @@ SendSSDPResponse(int s, const struct sockaddr * addr,
 	 * uppercase is recommended.
 	 * DATE: is recommended
 	 * SERVER: OS/ver UPnP/1.0 miniupnpd/1.0
-	 * - check what to put in the 'Cache-Control' header
-	 *
-	 * have a look at the document "UPnP Device Architecture v1.1 */
+	 * CACHE-CONTROL: Should be greater than or equal to 1800 seconds
+	 */
 	l = snprintf(buf, sizeof(buf), "HTTP/1.1 200 OK\r\n"
-		"CACHE-CONTROL: max-age=120\r\n"
+		"CACHE-CONTROL: max-age=1800\r\n"
 #ifdef ENABLE_HTTP_DATE
 		"DATE: %s\r\n"
 #endif
@@ -613,7 +644,9 @@ static struct {
 	{"urn:schemas-upnp-org:device:WANConnectionDevice:", 2, uuidvalue_wcd},
 	{"urn:schemas-upnp-org:device:WANDevice:", 2, uuidvalue_wan},
 	{"urn:schemas-upnp-org:service:WANIPConnection:", 2, uuidvalue_wcd},
+#ifdef ENABLE_DP_SERVICE
 	{"urn:schemas-upnp-org:service:DeviceProtection:", 1, uuidvalue_igd},
+#endif
 #ifdef ENABLE_6FC_SERVICE
 	{"urn:schemas-upnp-org:service:WANIPv6FirewallControl:", 1, uuidvalue_wcd},
 #endif
@@ -741,15 +774,6 @@ SendSSDPNotifies(int s, const char * host, unsigned short http_port,
 {
 #ifdef ENABLE_IPV6
 	struct sockaddr_storage sockname;
-	/* UDA 1.1 AnnexA and UDA 2.0 only allow/define the use of
-	 * Link-Local and Site-Local multicast scopes */
-	static struct { const char * p1, * p2; } const mcast_addrs[] =
-		{ { LL_SSDP_MCAST_ADDR, "[" LL_SSDP_MCAST_ADDR "]" },	/* Link Local */
-		  { SL_SSDP_MCAST_ADDR, "[" SL_SSDP_MCAST_ADDR "]" },	/* Site Local */
-#ifndef UPNP_STRICT
-		  { GL_SSDP_MCAST_ADDR, "[" GL_SSDP_MCAST_ADDR "]" },	/* Global */
-#endif /* ! UPNP_STRICT */
-		  { NULL, NULL } };
 	int j;
 #else /* ENABLE_IPV6 */
 	struct sockaddr_in sockname;
@@ -914,7 +938,11 @@ ProcessSSDPRequest(int s, unsigned short http_port)
 		   errno != EWOULDBLOCK &&
 		   errno != EINTR)
 		{
+#if defined(IP_RECVIF) || defined(IP_PKTINFO)
+			syslog(LOG_ERR, "recvmsg(udp): %m");
+#else
 			syslog(LOG_ERR, "recvfrom(udp): %m");
+#endif
 		}
 		return;
 	}
@@ -1166,6 +1194,18 @@ ProcessSSDPData(int s, const char *bufr, int n,
 				/* retrieve the IPv6 address which
 				 * will be used locally to reach sender */
 				memset(&addr6, 0, sizeof(addr6));
+				/* UPnP Device Architecture 2.0 - Annex A - IP version 6 support
+				 * p112 A2.3 :
+				 * a) Devices and control points SHALL use only the Link-Local
+				 * unicast address as the source address and when specifying
+				 * a literal IP address in LOCATION URLs in all multicast
+				 * messages that are multicast to the Link-Local scope FF02::C
+				 * for SSDP and FF02::130 for multicast eventing.
+				 * f) Devices and control points SHALL use an acquired ULA or
+				 * GUA in all multicast messages as the source address and
+				 * when specifying a literal IP address in LOCATION URLs
+				 * that are multicast to the Site-Local scope addresses of
+				 * either FF05::C or FF05::130 */
 				if(IN6_IS_ADDR_LINKLOCAL(&(((struct sockaddr_in6 *)sender)->sin6_addr))) {
 					get_link_local_addr(((struct sockaddr_in6 *)sender)->sin6_scope_id, &addr6);
 				} else if(get_src_for_route_to (sender, &addr6, &addr6_len, &index) < 0) {
@@ -1173,6 +1213,7 @@ ProcessSSDPData(int s, const char *bufr, int n,
 					announced_host = ipv6_addr_for_http_with_brackets;
 				}
 				if(announced_host == NULL) {
+					/* convert addr6 to string with brackets */
 					if(inet_ntop(AF_INET6, &addr6,
 					             announced_host_buf+1,
 					             sizeof(announced_host_buf) - 2)) {
@@ -1403,7 +1444,7 @@ SendSSDPbyebye(int s, const struct sockaddr * dest, socklen_t destlen,
 	n = sendto_or_schedule(s, bufr, l, 0, dest, destlen);
 	if(n < 0)
 	{
-		syslog(LOG_ERR, "sendto(udp_shutdown=%d): %m", s);
+		syslog(LOG_ERR, "sendto(udp_shutdown=%d) to %s: %m", s, dest_str);
 		return -1;
 	}
 	else if(n != l)
@@ -1425,6 +1466,7 @@ SendSSDPGoodbye(int * sockets, int n_sockets)
 	struct sockaddr * sockname;
 	socklen_t socknamelen;
 	int ipv6 = 0;
+	int k;
 #endif
 	int i, j;
 	char ver_str[4];
@@ -1439,7 +1481,6 @@ SendSSDPGoodbye(int * sockets, int n_sockets)
 	memset(&sockname6, 0, sizeof(struct sockaddr_in6));
 	sockname6.sin6_family = AF_INET6;
 	sockname6.sin6_port = htons(SSDP_PORT);
-	inet_pton(AF_INET6, LL_SSDP_MCAST_ADDR, &(sockname6.sin6_addr));
 #else
 	dest_str = SSDP_MCAST_ADDR;
 #endif
@@ -1450,36 +1491,25 @@ SendSSDPGoodbye(int * sockets, int n_sockets)
 			continue;
 #ifdef ENABLE_IPV6
 		ipv6 = j & 1;
-		if(ipv6) {
-			dest_str = "[" LL_SSDP_MCAST_ADDR "]";
-			sockname = (struct sockaddr *)&sockname6;
-			socknamelen = sizeof(struct sockaddr_in6);
-		} else {
-			dest_str = SSDP_MCAST_ADDR;
-			sockname = (struct sockaddr *)&sockname4;
-			socknamelen = sizeof(struct sockaddr_in);
-		}
-#endif
-	    for(i=0; known_service_types[i].s; i++)
-	    {
-			if(i==0)
-				ver_str[0] = '\0';
-			else
-				snprintf(ver_str, sizeof(ver_str), "%d", known_service_types[i].version);
-			ret += SendSSDPbyebye(sockets[j],
-#ifdef ENABLE_IPV6
-			                      sockname, socknamelen,
+		for(k = 0; (mcast_addrs[k].p1 != 0 && ipv6) || k < 1; k++) {
+			if(ipv6) {
+				dest_str = mcast_addrs[k].p2;
+				inet_pton(AF_INET6, mcast_addrs[k].p1, &(sockname6.sin6_addr));
+				sockname = (struct sockaddr *)&sockname6;
+				socknamelen = sizeof(struct sockaddr_in6);
+			} else {
+				dest_str = SSDP_MCAST_ADDR;
+				sockname = (struct sockaddr *)&sockname4;
+				socknamelen = sizeof(struct sockaddr_in);
+			}
 #else
-			                      (struct sockaddr *)&sockname4, sizeof(struct sockaddr_in),
+		{
 #endif
-			                      dest_str,
-			                      known_service_types[i].s, ver_str,	/* NT: */
-			                      known_service_types[i].uuid, "::",
-			                      known_service_types[i].s); /* ver_str, USN: */
-			if(i > 0 &&	/* only known_service_types[0].s is shorter than "urn:schemas-upnp-org:device" */
-			   0==memcmp(known_service_types[i].s,
-			             "urn:schemas-upnp-org:device", sizeof("urn:schemas-upnp-org:device")-1))
-			{
+		    for(i=0; known_service_types[i].s; i++) {
+				if(i==0)
+					ver_str[0] = '\0';
+				else
+					snprintf(ver_str, sizeof(ver_str), "%d", known_service_types[i].version);
 				ret += SendSSDPbyebye(sockets[j],
 #ifdef ENABLE_IPV6
 				                      sockname, socknamelen,
@@ -1487,8 +1517,23 @@ SendSSDPGoodbye(int * sockets, int n_sockets)
 				                      (struct sockaddr *)&sockname4, sizeof(struct sockaddr_in),
 #endif
 				                      dest_str,
-				                      known_service_types[i].uuid, "",	/* NT: */
-				                      known_service_types[i].uuid, "", ""); /* ver_str, USN: */
+				                      known_service_types[i].s, ver_str,	/* NT: */
+				                      known_service_types[i].uuid, "::",
+				                      known_service_types[i].s); /* ver_str, USN: */
+				if(i > 0 &&	/* only known_service_types[0].s is shorter than "urn:schemas-upnp-org:device" */
+				   0==memcmp(known_service_types[i].s,
+				             "urn:schemas-upnp-org:device", sizeof("urn:schemas-upnp-org:device")-1))
+				{
+					ret += SendSSDPbyebye(sockets[j],
+#ifdef ENABLE_IPV6
+					                      sockname, socknamelen,
+#else
+					                      (struct sockaddr *)&sockname4, sizeof(struct sockaddr_in),
+#endif
+					                      dest_str,
+					                      known_service_types[i].uuid, "",	/* NT: */
+					                      known_service_types[i].uuid, "", ""); /* ver_str, USN: */
+				}
 			}
 		}
 	}

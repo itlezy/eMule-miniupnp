@@ -1,7 +1,7 @@
 /* $Id: minissdpd.c,v 1.61 2021/11/04 23:27:28 nanard Exp $ */
 /* vim: tabstop=4 shiftwidth=4 noexpandtab
  * MiniUPnP project
- * (c) 2007-2021 Thomas Bernard
+ * (c) 2007-2026 Thomas Bernard
  * website : http://miniupnp.free.fr/ or https://miniupnp.tuxfamily.org/
  * This software is subject to the conditions detailed
  * in the LICENCE file provided within the distribution */
@@ -31,6 +31,12 @@
 #if 0
 #include <pwd.h>
 #include <grp.h>
+#endif
+
+#if defined(__sun)
+               /* solaris does not seem to have link_ntoa */
+               /* #define link_ntoa _link_ntoa */
+#define link_ntoa(x) "dummy-link_ntoa"
 #endif
 
 /* LOG_PERROR does not exist on Solaris */
@@ -193,7 +199,7 @@ parselanaddr(struct lan_addr_s * lan_addr, const char * str)
 	if(lan_addr->ifname[0] != '\0') {
 		lan_addr->index = if_nametoindex(lan_addr->ifname);
 		if(lan_addr->index == 0)
-			fprintf(stderr, "Cannot get index for network interface %s",
+			fprintf(stderr, "Cannot get index for network interface %s\n",
 			        lan_addr->ifname);
 	} else {
 		fprintf(stderr,
@@ -312,6 +318,8 @@ updateDevice(const struct header * headers, time_t t)
 			/* update Location ! */
 			if(headers[HEADER_LOCATION].l > p->headers[HEADER_LOCATION].l)
 			{
+				char * pc;
+				int i;
 				struct device * tmp;
 				tmp = realloc(p, sizeof(struct device)
 				    + headers[0].l+headers[1].l+headers[2].l);
@@ -324,10 +332,17 @@ updateDevice(const struct header * headers, time_t t)
 				}
 				p = tmp;
 				*pp = p;
+				p->headers[HEADER_LOCATION].l = headers[HEADER_LOCATION].l;
+				/* update the pointer to the new memory location */
+				pc = p->data;
+				for (i = 0; i < 3; i++)
+				{
+					p->headers[i].p = pc;
+					pc += p->headers[i].l;
+				}
 			}
 			memcpy(p->data + p->headers[0].l + p->headers[1].l,
 			       headers[2].p, headers[2].l);
-			/* TODO : check p->headers[HEADER_LOCATION].l */
 			return 0;
 		}
 		pp = &p->next;
@@ -472,7 +487,7 @@ SendSSDPMSEARCHResponse(int s, const struct sockaddr * sockname,
 	 *
 	 * have a look at the document "UPnP Device Architecture v1.1 */
 	l = snprintf(buf, sizeof(buf), "HTTP/1.1 200 OK\r\n"
-		"CACHE-CONTROL: max-age=120\r\n"
+		"CACHE-CONTROL: max-age=1800\r\n"
 		/*"DATE: ...\r\n"*/
 		"ST: %.*s\r\n"
 		"USN: %s\r\n"
@@ -1529,7 +1544,7 @@ int main(int argc, char * * argv)
 			}
 		}
 		gettimeofday(&now, NULL);
-		i = get_sendto_fds(&writefds, &max_fd, &now);
+		get_sendto_fds(&writefds, &max_fd, &now);
 		/* select call */
 		if(select(max_fd + 1, &readfds, &writefds, 0, 0) < 0) {
 			if(errno != EINTR) {
@@ -1660,23 +1675,19 @@ int main(int argc, char * * argv)
 quit:
 	if(s_ssdp >= 0) {
 		close(s_ssdp);
-		s_ssdp = -1;
 	}
 #ifdef ENABLE_IPV6
 	if(s_ssdp6 >= 0) {
 		close(s_ssdp6);
-		s_ssdp6 = -1;
 	}
 #endif	/* ENABLE_IPV6 */
 	if(s_unix >= 0) {
 		close(s_unix);
-		s_unix = -1;
 		if(unlink(sockpath) < 0)
 			syslog(LOG_ERR, "unlink(%s): %m", sockpath);
 	}
 	if(s_ifacewatch >= 0) {
 		close(s_ifacewatch);
-		s_ifacewatch = -1;
 	}
 	/* empty LAN interface/address list */
 	while(lan_addrs.lh_first != NULL) {

@@ -1,8 +1,8 @@
-/* $Id: upnpsoap.c,v 1.157 2020/05/30 08:28:22 nanard Exp $ */
+/* $Id: upnpsoap.c,v 1.169 2025/04/06 22:30:26 nanard Exp $ */
 /* vim: tabstop=4 shiftwidth=4 noexpandtab
  * MiniUPnP project
  * http://miniupnp.free.fr/ or https://miniupnp.tuxfamily.org/
- * (c) 2006-2021 Thomas Bernard
+ * (c) 2006-2026 Thomas Bernard
  * This software is subject to the conditions detailed
  * in the LICENCE file provided within the distribution */
 
@@ -44,6 +44,29 @@ static int is_numeric(const char * s)
 	}
 	return 1;
 }
+
+#ifdef ENABLE_PCP
+/**
+ * Hide the PCP nonce value from the description returned to clients
+ */
+void hide_pcp_nonce(char * desc)
+{
+	int i;
+	if (desc == NULL) return;
+	/* format is "PCP %s %08x%08x%08x" */
+	if (*desc++ != 'P') return;
+	if (*desc++ != 'C') return;
+	if (*desc++ != 'P') return;
+	if (*desc++ != ' ') return;
+	/* skip the op code */
+	while (*desc >= 'A' && *desc <= 'Z') desc++;
+	if (*desc++ != ' ') return;
+	for (i = 0; i < 24; i++) {
+		if (desc[i] == '\0') return;
+		desc[i] = 'x';	/* replace nonce with 'x' characters */
+	}
+}
+#endif
 
 static void
 BuildSendAndCloseSoapResp(struct upnphttp * h,
@@ -347,8 +370,12 @@ GetExternalIPAddress(struct upnphttp * h, const char * action, const char * ns)
 				ext_if_name);
 			ext_ip_addr[0] = '\0';
 		} else if (addr_is_reserved(&addr)) {
-			syslog(LOG_NOTICE, "private/reserved address %s is not suitable for external IP", ext_ip_addr);
-			ext_ip_addr[0] = '\0';
+			if (GETFLAG(ALLOWPRIVATEIPV4MASK)) {
+				syslog(LOG_WARNING, "IGNORED : private/reserved address %s is not suitable for external IP", ext_ip_addr);
+			} else {
+				syslog(LOG_NOTICE, "private/reserved address %s is not suitable for external IP", ext_ip_addr);
+				ext_ip_addr[0] = '\0';
+			}
 		}
 	}
 #else
@@ -479,7 +506,11 @@ AddPortMapping(struct upnphttp * h, const char * action, const char * ns)
 			syslog(LOG_INFO, "Client %s tried to redirect port to %s",
 			       inet_ntoa(h->clientaddr), int_ip);
 			ClearNameValueList(&data);
+#ifdef IGD_V2
+			SoapError(h, 606, "Action not authorized");
+#else
 			SoapError(h, 718, "ConflictInMappingEntry");
+#endif
 			return;
 		}
 	}
@@ -503,7 +534,7 @@ AddPortMapping(struct upnphttp * h, const char * action, const char * ns)
 	if (strcmp(ext_port, "*") == 0 || eport == 0)
 	{
 		ClearNameValueList(&data);
-		SoapError(h, 716, "Wildcard not permited in ExtPort");
+		SoapError(h, 716, "WildCardNotPermittedInExtPort");
 		return;
 	}
 
@@ -533,8 +564,8 @@ AddPortMapping(struct upnphttp * h, const char * action, const char * ns)
 	 * 402 - Invalid Args
 	 * 501 - Action Failed
 	 * 606 - Action not authorized (added in IGD v2)
-	 * 715 - Wildcard not permited in SrcAddr
-	 * 716 - Wildcard not permited in ExtPort
+	 * 715 - WildCardNotPermittedInSrcIP
+	 * 716 - WildCardNotPermittedInExtPort
 	 * 718 - ConflictInMappingEntry
 	 * 724 - SamePortValuesRequired (deprecated in IGD v2)
      * 725 - OnlyPermanentLeasesSupported
@@ -572,7 +603,7 @@ AddPortMapping(struct upnphttp * h, const char * action, const char * ns)
 		SoapError(h, 718, "ConflictInMappingEntry");
 		break;
 	default:
-		SoapError(h, 501, "ActionFailed");
+		SoapError(h, 501, "Action Failed");
 	}
 }
 
@@ -738,7 +769,7 @@ AddAnyPortMapping(struct upnphttp * h, const char * action, const char * ns)
 		SoapError(h, 606, "Action not authorized");
 		break;
 	default:
-		SoapError(h, 501, "ActionFailed");
+		SoapError(h, 501, "Action Failed");
 	}
 }
 
@@ -757,13 +788,13 @@ GetSpecificPortMappingEntry(struct upnphttp * h, const char * action, const char
 		"<NewLeaseDuration>%u</NewLeaseDuration>"
 		"</u:%sResponse>";
 
-	char body[1024];
+	char body[512+MINIUPNPD_DESC_SIZE];
 	int bodylen;
 	struct NameValueParserData data;
 	const char * r_host, * ext_port, * protocol;
 	unsigned short eport, iport;
 	char int_ip[32];
-	char desc[64];
+	char desc[MINIUPNPD_DESC_SIZE];
 	unsigned int leaseduration = 0;
 
 	ParseNameValue(h->req_buf + h->req_contentoff, h->req_contentlen, &data);
@@ -820,6 +851,9 @@ GetSpecificPortMappingEntry(struct upnphttp * h, const char * action, const char
 		       action,
 		       r_host ? r_host : "NULL", ext_port, protocol, int_ip,
 		       (unsigned int)iport, desc, leaseduration);
+#ifdef ENABLE_PCP
+		hide_pcp_nonce(desc);
+#endif
 		bodylen = snprintf(body, sizeof(body), resp,
 				action, ns/*SERVICE_TYPE_WANIPC*/,
 				(unsigned int)iport, int_ip, desc, leaseduration,
@@ -912,8 +946,11 @@ DeletePortMapping(struct upnphttp * h, const char * action, const char * ns)
 			{
 				if(h->clientaddr.s_addr != int_ip_addr.s_addr)
 				{
+#ifdef IGD_V2
 					SoapError(h, 606, "Action not authorized");
-					/*SoapError(h, 714, "NoSuchEntryInArray");*/
+#else
+					SoapError(h, 714, "NoSuchEntryInArray");
+#endif
 					ClearNameValueList(&data);
 					return;
 				}
@@ -1036,7 +1073,7 @@ GetGenericPortMappingEntry(struct upnphttp * h, const char * action, const char 
 	const char * m_index;
 	char * endptr;
 	char protocol[8], iaddr[32];
-	char desc[64];
+	char desc[MINIUPNPD_DESC_SIZE];
 	char rhost[40];
 	unsigned int leaseduration = 0;
 	struct NameValueParserData data;
@@ -1083,7 +1120,10 @@ GetGenericPortMappingEntry(struct upnphttp * h, const char * action, const char 
 	else
 	{
 		int bodylen;
-		char body[2048];
+		char body[512+MINIUPNPD_DESC_SIZE];
+#ifdef ENABLE_PCP
+		hide_pcp_nonce(desc);
+#endif
 		bodylen = snprintf(body, sizeof(body), resp,
 			action, ns, /*SERVICE_TYPE_WANIPC,*/ rhost,
 			(unsigned int)eport, protocol, (unsigned int)iport, iaddr, desc,
@@ -1133,7 +1173,7 @@ GetListOfPortMappings(struct upnphttp * h, const char * action, const char * ns)
 	int r = -1;
 	unsigned short iport;
 	char int_ip[32];
-	char desc[64];
+	char desc[MINIUPNPD_DESC_SIZE];
 	char rhost[64];
 	unsigned int leaseduration = 0;
 
@@ -1197,14 +1237,14 @@ http://www.upnp.org/schemas/gw/WANIPConnection-v2.xsd">
 	if(!body)
 	{
 		ClearNameValueList(&data);
-		SoapError(h, 501, "ActionFailed");
+		SoapError(h, 501, "Action Failed");
 		return;
 	}
 	bodylen = snprintf(body, bodyalloc, resp_start,
 	              action, ns/*SERVICE_TYPE_WANIPC*/);
 	if(bodylen < 0)
 	{
-		SoapError(h, 501, "ActionFailed");
+		SoapError(h, 501, "Action Failed");
 		free(body);
 		return;
 	}
@@ -1216,8 +1256,8 @@ http://www.upnp.org/schemas/gw/WANIPConnection-v2.xsd">
 	/* loop through port mappings */
 	for(i = 0; number > 0 && i < list_size; i++)
 	{
-		/* have a margin of 1024 bytes to store the new entry */
-		if((unsigned int)bodylen + 1024 > bodyalloc)
+		/* have a margin of 1024 bytes + MINIUPNPD_DESC_SIZE to store the new entry */
+		if((unsigned int)bodylen + 1024 + MINIUPNPD_DESC_SIZE > bodyalloc)
 		{
 			char * body_sav = body;
 			bodyalloc += 4096;
@@ -1226,7 +1266,7 @@ http://www.upnp.org/schemas/gw/WANIPConnection-v2.xsd">
 			{
 				syslog(LOG_CRIT, "realloc(%p, %u) FAILED", body_sav, (unsigned)bodyalloc);
 				ClearNameValueList(&data);
-				SoapError(h, 501, "ActionFailed");
+				SoapError(h, 501, "Action Failed");
 				free(body_sav);
 				free(port_list);
 				return;
@@ -1240,6 +1280,9 @@ http://www.upnp.org/schemas/gw/WANIPConnection-v2.xsd">
 		                               &leaseduration);
 		if(r == 0)
 		{
+#ifdef ENABLE_PCP
+			hide_pcp_nonce(desc);
+#endif
 			bodylen += snprintf(body+bodylen, bodyalloc-bodylen, entry,
 			                    rhost, port_list[i], protocol,
 			                    iport, int_ip, desc, leaseduration);
@@ -1258,7 +1301,7 @@ http://www.upnp.org/schemas/gw/WANIPConnection-v2.xsd">
 		{
 			syslog(LOG_CRIT, "realloc(%p, %u) FAILED", body_sav, (unsigned)bodyalloc);
 			ClearNameValueList(&data);
-			SoapError(h, 501, "ActionFailed");
+			SoapError(h, 501, "Action Failed");
 			free(body_sav);
 			return;
 		}
@@ -1559,77 +1602,127 @@ static int connecthostport(const char * host, unsigned short port, char * result
 }
 #endif
 
-/* Check the security policy right */
+/*! \brief Check the security policy rights for pinhole.
+ * Pinhole InternalClient address must match the action sender.
+ * if int_ip is a hostname, converts it to litteral ipv6 into int_ip_resolved
+ * \param[in] h upnphttp object
+ * \param[in] int_ip InternalClient argument or real internal client IP
+ * \param[in] int_port InternalPort argument
+ * \param[out] int_ip_resolved a INET6_ADDRSTRLEN long char buffer
+ * \return 1 if it passes, call SoapError() and returns 0 or -1 if it fails
+ */
 static int
-PinholeVerification(struct upnphttp * h, char * int_ip, unsigned short int_port)
+PinholeVerification(struct upnphttp * h, const char * int_ip, unsigned short int_port, char * int_ip_resolved)
 {
-	int n;
-	char senderAddr[INET6_ADDRSTRLEN]="";
-	struct addrinfo hints, *ai, *p;
+	char clientaddr_str[INET6_ADDRSTRLEN];
 	struct in6_addr result_ip;
 
-	/* Pinhole InternalClient address must correspond to the action sender */
-	syslog(LOG_INFO, "Checking internal IP@ and port (Security policy purpose)");
-
-	hints.ai_socktype = SOCK_STREAM;
-	hints.ai_family = AF_UNSPEC;
-
-	/* if ip not valid assume hostname and convert */
-	if (inet_pton(AF_INET6, int_ip, &result_ip) <= 0)
+	if (int_ip_resolved != NULL)
 	{
-		n = getaddrinfo(int_ip, NULL, &hints, &ai);
-		if (n == 0)
+		int_ip_resolved[0] = '\0';
+		/* if ip not valid assume hostname and convert */
+		if (inet_pton(AF_INET6, int_ip, &result_ip) <= 0)
 		{
+			int r;
+			struct addrinfo hints, *ai, *p;
 			int found = 0;
+
+			syslog(LOG_INFO, "%s: InternalClient %s is not an IPv6, assume hostname and convert",
+			       "PinholeVerification", int_ip);
+
+			memset(&hints, 0, sizeof(hints));
+			hints.ai_family = AF_UNSPEC;
+			hints.ai_socktype = SOCK_STREAM;
+			hints.ai_protocol = 0; /* we may indicate which protocol IPPROTO_UDP / IPPROTO_TCP / IPPROTO_SCTP / IPPROTO_UDPLITE */
+
+			r = getaddrinfo(int_ip, NULL, &hints, &ai);
+			if (r != 0)
+			{
+				syslog(LOG_WARNING, "%s: Failed to convert hostname '%s' to IP address : %s",
+				       "PinholeVerification", int_ip, gai_strerror(r));
+				SoapError(h, 402, "Invalid Args");
+				return -1;
+			}
 			for(p = ai; p; p = p->ai_next)
 			{
 				if(p->ai_family == AF_INET6)
 				{
-					inet_ntop(AF_INET6, (struct in6_addr *) p, int_ip, sizeof(struct in6_addr));
-					result_ip = *((struct in6_addr *) p);
-					found = 1;
-					/* TODO : deal with more than one ip per hostname */
-					break;
+					if (!found)
+					{
+						result_ip = ((struct sockaddr_in6 *)p->ai_addr)->sin6_addr;
+
+						if (inet_ntop(AF_INET6, &result_ip, int_ip_resolved, INET6_ADDRSTRLEN) == NULL)
+						{
+							syslog(LOG_WARNING, "%s: inet_ntop(): %m", "PinholeVerification");
+							SoapError(h, 501, "Action Failed");
+							return -1;
+						}
+						syslog(LOG_INFO, "%s: InternalClient \"%s\" resolved as %s",
+						       "PinholeVerification", int_ip, int_ip_resolved);
+						found = 1;
+					}
+					else
+					{
+						char tmp[48];
+						sockaddr_to_string(p->ai_addr, tmp, sizeof(tmp));
+						syslog(LOG_INFO, "%s: additional IPv6 for \"%s\" : %s",
+						       "PinholeVerification", int_ip, tmp);
+					}
 				}
 			}
 			freeaddrinfo(ai);
 			if (!found)
 			{
-				syslog(LOG_NOTICE, "No IPv6 address for hostname '%s'", int_ip);
+				syslog(LOG_NOTICE, "%s: No IPv6 address for hostname '%s'",
+				       "PinholeVerification", int_ip);
 				SoapError(h, 402, "Invalid Args");
 				return -1;
 			}
 		}
 		else
 		{
-			syslog(LOG_WARNING, "Failed to convert hostname '%s' to IP address : %s",
-			       int_ip, gai_strerror(n));
-			SoapError(h, 402, "Invalid Args");
+			/* it was already OK */
+			strncpy(int_ip_resolved, int_ip, INET6_ADDRSTRLEN);
+			int_ip_resolved[INET6_ADDRSTRLEN-1] = '\0';
+		}
+	}
+	else
+	{
+		/* no need to copy to int_ip_resolved, but we still need to fill result_ip up */
+		if (inet_pton(AF_INET6, int_ip, &result_ip) <= 0)
+		{
+			syslog(LOG_ERR, "inet_pton(%s)", int_ip);
+			SoapError(h, 501, "Action Failed");
 			return -1;
 		}
 	}
 
-	if(inet_ntop(AF_INET6, &(h->clientaddr_v6), senderAddr, INET6_ADDRSTRLEN) == NULL)
+	if(inet_ntop(AF_INET6, &(h->clientaddr_v6), clientaddr_str, INET6_ADDRSTRLEN) == NULL)
 	{
 		syslog(LOG_ERR, "inet_ntop: %m");
+		strncpy(clientaddr_str, "*ERROR*", sizeof(clientaddr_str));
 	}
-#ifdef DEBUG
-	printf("\tPinholeVerification:\n\t\tCompare sender @: %s\n\t\t  to intClient @: %s\n", senderAddr, int_ip);
-#endif
-	if(strcmp(senderAddr, int_ip) != 0)
-	if(h->clientaddr_v6.s6_addr != result_ip.s6_addr)
+
+	if(memcmp(&h->clientaddr_v6, &result_ip, sizeof(struct in6_addr)) != 0)
 	{
-		syslog(LOG_INFO, "Client %s tried to access pinhole for internal %s and is not authorized to do it",
-		       senderAddr, int_ip);
+		syslog(LOG_INFO, "%s: Client %s tried to access pinhole for internal %s and is not authorized",
+		       "PinholeVerification", clientaddr_str, int_ip_resolved == NULL ? int_ip : int_ip_resolved);
 		SoapError(h, 606, "Action not authorized");
 		return 0;
 	}
+#ifdef DEBUG
+	else
+	{
+		syslog(LOG_DEBUG, "%s: sender %s == InternalClient %s",
+		       "PinholeVerification", clientaddr_str, int_ip);
+	}
+#endif
 
 	/* Pinhole InternalPort must be greater than or equal to 1024 */
 	if (int_port < 1024)
 	{
 		syslog(LOG_INFO, "Client %s tried to access pinhole with port < 1024 and is not authorized to do it",
-		       senderAddr);
+		       clientaddr_str);
 		SoapError(h, 606, "Action not authorized");
 		return 0;
 	}
@@ -1649,6 +1742,7 @@ AddPinhole(struct upnphttp * h, const char * action, const char * ns)
 	int bodylen;
 	struct NameValueParserData data;
 	char * rem_host, * rem_port, * int_ip, * int_port, * protocol, * leaseTime;
+	char int_ip_resolved[INET6_ADDRSTRLEN];
 	int uid = 0;
 	unsigned short iport, rport;
 	int ltime;
@@ -1666,6 +1760,14 @@ AddPinhole(struct upnphttp * h, const char * action, const char * ns)
 	protocol = GetValueFromNameValueList(&data, "Protocol");
 	leaseTime = GetValueFromNameValueList(&data, "LeaseTime");
 
+#ifdef UPNP_STRICT
+	if (rem_port == NULL || rem_port[0] == '\0' || int_port == NULL || int_port[0] == '\0' )
+	{
+		ClearNameValueList(&data);
+		SoapError(h, 402, "Invalid Args");
+		return;
+	}
+#endif
 	rport = (unsigned short)(rem_port ? atoi(rem_port) : 0);
 	iport = (unsigned short)(int_port ? atoi(int_port) : 0);
 	ltime = leaseTime ? atoi(leaseTime) : -1;
@@ -1762,19 +1864,19 @@ AddPinhole(struct upnphttp * h, const char * action, const char * ns)
 		goto clear_and_exit;
 	}
 
-	if(PinholeVerification(h, int_ip, iport) <= 0)
+	if(PinholeVerification(h, int_ip, iport, int_ip_resolved) <= 0)
 		goto clear_and_exit;
 
 	syslog(LOG_INFO, "%s: (inbound) from [%s]:%hu to [%s]:%hu with proto %ld during %d sec",
 	       action, rem_host?rem_host:"any",
-	       rport, int_ip, iport,
+	       rport, int_ip_resolved, iport,
 	       proto, ltime);
 
 	/* In cases where the RemoteHost, RemotePort, InternalPort,
 	 * InternalClient and Protocol are the same than an existing pinhole,
 	 * but LeaseTime is different, the device MUST extend the existing
 	 * pinhole's lease time and return the UniqueID of the existing pinhole. */
-	r = upnp_add_inboundpinhole(rem_host, rport, int_ip, iport, proto, "IGD2 pinhole", ltime, &uid);
+	r = upnp_add_inboundpinhole(rem_host, rport, int_ip_resolved, iport, proto, "IGD2 pinhole", ltime, &uid);
 
 	switch(r)
 	{
@@ -1789,7 +1891,7 @@ AddPinhole(struct upnphttp * h, const char * action, const char * ns)
 			SoapError(h, 701, "PinholeSpaceExhausted");
 			break;
 		default:
-			SoapError(h, 501, "ActionFailed");
+			SoapError(h, 501, "Action Failed");
 			break;
 	}
 	/* 606 Action not authorized
@@ -1852,7 +1954,7 @@ UpdatePinhole(struct upnphttp * h, const char * action, const char * ns)
 	                          NULL, NULL);
 	if (n >= 0)
 	{
-		if(PinholeVerification(h, iaddr, iport) <= 0)
+		if(PinholeVerification(h, iaddr, iport, NULL) <= 0)
 			return;
 	}
 	else if(n == -2)
@@ -1862,7 +1964,7 @@ UpdatePinhole(struct upnphttp * h, const char * action, const char * ns)
 	}
 	else
 	{
-		SoapError(h, 501, "ActionFailed");
+		SoapError(h, 501, "Action Failed");
 		return;
 	}
 
@@ -1873,7 +1975,7 @@ UpdatePinhole(struct upnphttp * h, const char * action, const char * ns)
 	if(n == -1)
 		SoapError(h, 704, "NoSuchEntry");
 	else if(n < 0)
-		SoapError(h, 501, "ActionFailed");
+		SoapError(h, 501, "Action Failed");
 	else {
 		bodylen = snprintf(body, sizeof(body), resp,
 		                   action, ns, action);
@@ -1941,7 +2043,7 @@ GetOutboundPinholeTimeout(struct upnphttp * h, const char * action, const char *
 			SoapError(h, 705, "ProtocolNotSupported");
 			break;
 		default:
-			SoapError(h, 501, "ActionFailed");
+			SoapError(h, 501, "Action Failed");
 	}
 	ClearNameValueList(&data);
 }
@@ -1994,7 +2096,7 @@ DeletePinhole(struct upnphttp * h, const char * action, const char * ns)
 	                          &leasetime, NULL);
 	if (n >= 0)
 	{
-		if(PinholeVerification(h, iaddr, iport) <= 0)
+		if(PinholeVerification(h, iaddr, iport, NULL) <= 0)
 			return;
 	}
 	else if(n == -2)
@@ -2004,7 +2106,7 @@ DeletePinhole(struct upnphttp * h, const char * action, const char * ns)
 	}
 	else
 	{
-		SoapError(h, 501, "ActionFailed");
+		SoapError(h, 501, "Action Failed");
 		return;
 	}
 
@@ -2013,7 +2115,7 @@ DeletePinhole(struct upnphttp * h, const char * action, const char * ns)
 	{
 		syslog(LOG_INFO, "%s: (inbound) failed to remove pinhole with ID: %d",
 	           action, uid);
-		SoapError(h, 501, "ActionFailed");
+		SoapError(h, 501, "Action Failed");
 		return;
 	}
 	syslog(LOG_INFO, "%s: (inbound) pinhole with ID %d successfully removed",
@@ -2065,11 +2167,11 @@ CheckPinholeWorking(struct upnphttp * h, const char * action, const char * ns)
 	                          NULL, &packets);
 	if (r >= 0)
 	{
-		if(PinholeVerification(h, iaddr, iport) <= 0)
-			return ;
+		if(PinholeVerification(h, iaddr, iport, NULL) <= 0)
+			return;
 		if(packets == 0)
 		{
-			SoapError(h, 709, "NoPacketSent");
+			SoapError(h, 709, "NoTrafficReceived");
 			return;
 		}
 		bodylen = snprintf(body, sizeof(body), resp,
@@ -2080,7 +2182,7 @@ CheckPinholeWorking(struct upnphttp * h, const char * action, const char * ns)
 	else if(r == -2)
 		SoapError(h, 704, "NoSuchEntry");
 	else
-		SoapError(h, 501, "ActionFailed");
+		SoapError(h, 501, "Action Failed");
 }
 
 static void
@@ -2126,8 +2228,8 @@ GetPinholePackets(struct upnphttp * h, const char * action, const char * ns)
 	                          &leasetime, &packets);
 	if (n >= 0)
 	{
-		if(PinholeVerification(h, iaddr, iport)<=0)
-			return ;
+		if(PinholeVerification(h, iaddr, iport, NULL) <= 0)
+			return;
 	}
 #if 0
 	else if(r == -4 || r == -1)
@@ -2312,23 +2414,21 @@ void
 ExecuteSoapAction(struct upnphttp * h, const char * action, int n)
 {
 	char * p;
-	char * p2;
 	int i, len, methodlen;
 	char namespace[256];
 
 	/* SoapAction example :
 	 * urn:schemas-upnp-org:service:WANIPConnection:1#GetStatusInfo */
-	p = strchr(action, '#');
-	if(p && (p - action) < n) {
+	p = memchr(action, '#', n);
+	if(p) {
 		for(i = 0; i < ((int)sizeof(namespace) - 1) && (action + i) < p; i++)
 			namespace[i] = action[i];
 		namespace[i] = '\0';
 		p++;
-		p2 = strchr(p, '"');
-		if(p2 && (p2 - action) <= n)
-			methodlen = p2 - p;
-		else
-			methodlen = n - (p - action);
+		methodlen = n - (int)(p - action);
+		if(p[methodlen-1] == '"') {
+			methodlen--;	/* remove the ending " */
+		}
 		/*syslog(LOG_DEBUG, "SoapMethod: %.*s %d %d %p %p %d",
 		       methodlen, p, methodlen, n, action, p, (int)(p - action));*/
 		for(i = 0; soapMethods[i].methodName; i++) {

@@ -1,8 +1,8 @@
-/* $Id: upnpdescgen.c,v 1.87 2020/05/30 09:05:46 nanard Exp $ */
+/* $Id: upnpdescgen.c,v 1.93 2025/04/06 22:30:24 nanard Exp $ */
 /* vim: tabstop=4 shiftwidth=4 noexpandtab
  * MiniUPnP project
  * http://miniupnp.free.fr/ or https://miniupnp.tuxfamily.org/
- * (c) 2006-2021 Thomas Bernard
+ * (c) 2006-2025 Thomas Bernard
  * This software is subject to the conditions detailed
  * in the LICENCE file provided within the distribution */
 
@@ -22,6 +22,7 @@
 #include "upnpdescstrings.h"
 #include "upnpurns.h"
 #include "getconnstatus.h"
+#include "macros.h"
 
 
 /* Event magical values codes */
@@ -891,7 +892,7 @@ genXML(char * str, int * len, int * tmplen,
        int force_igd1)
 {
 #define GENXML_STACK_SIZE 16
-	unsigned short i, j;
+	unsigned short i;
 	int top;
 	const char * eltname, *s;
 	char c;
@@ -900,9 +901,12 @@ genXML(char * str, int * len, int * tmplen,
 		unsigned short j;
 		const char * eltname;
 	} pile[GENXML_STACK_SIZE]; /* stack */
+#if !defined(IGD_V2)
+	UNUSED(force_igd1);
+#endif
+
 	top = -1;
 	i = 0;	/* current node */
-	j = 1;	/* i + number of nodes*/
 	for(;;)
 	{
 		eltname = p[i].eltname;
@@ -943,15 +947,15 @@ genXML(char * str, int * len, int * tmplen,
 				str = strcat_str(str, len, tmplen, eltname);
 				str = strcat_char(str, len, tmplen, '>');
 			}
+#ifdef IGD_V2
 unstack:
+#endif
 			for(;;)
 			{
 				if(top < 0)
 					return str;
 				i = ++(pile[top].i);
-				j = pile[top].j;
-				/*printf("  pile[%d]\t%d %d\n", top, i, j); */
-				if(i==j)
+				if(i == pile[top].j)
 				{
 					/*printf("</%s>\n", pile[top].eltname); */
 					str = strcat_char(str, len, tmplen, '<');
@@ -990,12 +994,10 @@ unstack:
 			}
 			str = strcat_char(str, len, tmplen, '>');
 			i = k & 0xffff;
-			j = i + (k >> 16);
 			if(top < (GENXML_STACK_SIZE - 1)) {
 				top++;
-				/*printf(" +pile[%d]\t%d %d\n", top, i, j); */
 				pile[top].i = i;
-				pile[top].j = j;
+				pile[top].j = i + (k >> 16);
 				pile[top].eltname = eltname;
 #ifdef DEBUG
 			} else {
@@ -1040,6 +1042,10 @@ genServiceDesc(int * len, const struct serviceDesc * s, int force_igd1)
 	const struct argument * args;
 	char * str;
 	int tmplen;
+#if !defined(IGD_V2)
+	UNUSED(force_igd1);
+#endif
+
 	tmplen = 2048;
 	str = (char *)malloc(tmplen);
 	if(str == NULL)
@@ -1113,7 +1119,7 @@ genServiceDesc(int * len, const struct serviceDesc * s, int force_igd1)
 #ifdef IGD_V2
 				} else if(plen >= 11 && 0 == memcmp(p, "A_ARG_TYPE_", 11)) {
 					str = strcat_str(str, len, &tmplen, p + 11);
-				} else if(plen >= 13 && 0 == memcmp(p, "ExternalPort", 13)
+				} else if(plen == 12 && 0 == memcmp(p, "ExternalPort", 12)
 				          && args[j].dir == 2
 				          && 0 == memcmp(acts[i].name, "AddAnyPortMapping", 18)) {
 					str = strcat_str(str, len, &tmplen, "ReservedPort");
@@ -1305,7 +1311,7 @@ genEventVars(int * len, const struct serviceDesc * s)
 				else {
 					struct in_addr addr;
 					char ext_ip_addr[INET_ADDRSTRLEN];
-					if(getifaddr(ext_if_name, ext_ip_addr, INET_ADDRSTRLEN, &addr, NULL) < 0 || addr_is_reserved(&addr)) {
+					if(getifaddr(ext_if_name, ext_ip_addr, INET_ADDRSTRLEN, &addr, NULL) < 0 || (!GETFLAG(ALLOWPRIVATEIPV4MASK) && addr_is_reserved(&addr))) {
 						str = strcat_str(str, len, &tmplen, "0.0.0.0");
 					} else {
 						str = strcat_str(str, len, &tmplen, ext_ip_addr);
